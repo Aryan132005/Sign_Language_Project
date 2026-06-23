@@ -1,0 +1,1065 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SignSpeak — Real-Time Sign Language Recognition</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <style>
+    /* ── Reset & Base ────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:         #0a0d12;
+      --bg2:        #111520;
+      --bg3:        #181d28;
+      --card:       #1a2030;
+      --border:     rgba(255,255,255,0.07);
+      --border2:    rgba(255,255,255,0.13);
+      --accent:     #00e5a0;
+      --accent2:    #00b87d;
+      --accent-dim: rgba(0,229,160,0.12);
+      --accent-glow:rgba(0,229,160,0.25);
+      --purple:     #7c6af7;
+      --purple-dim: rgba(124,106,247,0.15);
+      --text:       #e8eaf0;
+      --text2:      #8b92a8;
+      --text3:      #545c72;
+      --danger:     #ff4d6a;
+      --warn:       #ffb020;
+      --radius:     14px;
+      --radius-sm:  8px;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Header ─────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 32px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg2);
+      position: sticky; top: 0; z-index: 100;
+    }
+    .logo {
+      display: flex; align-items: center; gap: 10px;
+    }
+    .logo-icon {
+      width: 36px; height: 36px;
+      background: var(--accent-dim);
+      border: 1px solid var(--accent);
+      border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    .logo-text {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 20px; font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+    .logo-text span { color: var(--accent); }
+
+    .status-pill {
+      display: flex; align-items: center; gap: 7px;
+      padding: 6px 14px;
+      background: var(--bg3);
+      border: 1px solid var(--border2);
+      border-radius: 99px;
+      font-size: 12px; font-weight: 500; color: var(--text2);
+    }
+    .status-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--text3);
+      transition: background 0.4s;
+    }
+    .status-dot.active { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+    .status-dot.error  { background: var(--danger); }
+
+    /* ── Layout ──────────────────────────────────── */
+    main {
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 24px;
+      padding: 24px 32px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    @media (max-width: 1024px) {
+      main { grid-template-columns: 1fr; }
+    }
+
+    /* ── Camera Panel ────────────────────────────── */
+    .camera-section { display: flex; flex-direction: column; gap: 16px; }
+
+    .camera-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .camera-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    .camera-title {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 14px; font-weight: 600; letter-spacing: 0.3px;
+    }
+    .camera-controls { display: flex; gap: 8px; }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 16px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border2);
+      background: transparent;
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      font-size: 13px; font-weight: 500;
+      cursor: pointer;
+      transition: all 0.18s;
+    }
+    .btn:hover { background: var(--bg3); border-color: var(--border2); }
+    .btn-primary {
+      background: var(--accent); border-color: var(--accent);
+      color: #000; font-weight: 600;
+    }
+    .btn-primary:hover { background: var(--accent2); border-color: var(--accent2); }
+    .btn-danger { border-color: var(--danger); color: var(--danger); }
+    .btn-danger:hover { background: rgba(255,77,106,0.1); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Video wrapper */
+    .video-wrapper {
+      position: relative;
+      background: #050810;
+      aspect-ratio: 16/9;
+      display: flex; align-items: center; justify-content: center;
+      overflow: hidden;
+    }
+    #videoEl {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1);
+      display: none;
+    }
+    #canvasOverlay {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+      display: none;
+    }
+
+    .camera-placeholder {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 16px;
+      color: var(--text3); text-align: center;
+    }
+    .camera-placeholder .icon {
+      font-size: 56px; opacity: 0.4;
+    }
+    .camera-placeholder p {
+      font-size: 14px; max-width: 240px; line-height: 1.6;
+    }
+
+    /* Landmark overlay image */
+    #landmarkImg {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      display: none;
+    }
+
+    /* Corner decorations */
+    .corner { position: absolute; width: 22px; height: 22px; }
+    .corner-tl { top: 12px; left: 12px; border-top: 2px solid var(--accent); border-left: 2px solid var(--accent); border-radius: 4px 0 0 0; }
+    .corner-tr { top: 12px; right: 12px; border-top: 2px solid var(--accent); border-right: 2px solid var(--accent); border-radius: 0 4px 0 0; }
+    .corner-bl { bottom: 12px; left: 12px; border-bottom: 2px solid var(--accent); border-left: 2px solid var(--accent); border-radius: 0 0 0 4px; }
+    .corner-br { bottom: 12px; right: 12px; border-bottom: 2px solid var(--accent); border-right: 2px solid var(--accent); border-radius: 0 0 4px 0; }
+
+    /* FPS + detection badge */
+    .camera-badges {
+      position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 8px; display: none;
+    }
+    .badge {
+      padding: 4px 10px;
+      background: rgba(0,0,0,0.65);
+      border: 1px solid var(--border2);
+      border-radius: 99px;
+      font-size: 11px; font-weight: 500; color: var(--text2);
+    }
+    .badge.green { color: var(--accent); border-color: rgba(0,229,160,0.3); }
+
+    /* ── Prediction overlay on video ─────────────── */
+    .sign-overlay {
+      position: absolute;
+      top: 14px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,0.75);
+      border: 1px solid var(--accent);
+      border-radius: 99px;
+      padding: 6px 20px;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 15px; font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.5px;
+      display: none;
+      white-space: nowrap;
+    }
+
+    /* Confidence bar inside video */
+    .conf-bar-wrap {
+      position: absolute;
+      bottom: 44px; left: 14px; right: 14px;
+      display: none;
+    }
+    .conf-bar-track {
+      height: 4px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    .conf-bar-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 99px;
+      transition: width 0.3s ease;
+      width: 0%;
+    }
+    .conf-label {
+      font-size: 11px; color: var(--text2);
+      margin-bottom: 4px;
+    }
+
+    /* ── Sentence builder ────────────────────────── */
+    .sentence-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 18px;
+    }
+    .sentence-label {
+      font-size: 11px; font-weight: 500; color: var(--text3);
+      text-transform: uppercase; letter-spacing: 0.8px;
+      margin-bottom: 8px;
+    }
+    .sentence-output {
+      min-height: 52px;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
+      font-size: 18px; font-weight: 500;
+      color: var(--text);
+      letter-spacing: 0.3px;
+      line-height: 1.5;
+      word-break: break-word;
+    }
+    .sentence-output .placeholder { color: var(--text3); font-size: 14px; font-weight: 400; }
+    .sentence-actions {
+      display: flex; gap: 8px; margin-top: 10px;
+    }
+
+    /* ── Right panel ─────────────────────────────── */
+    .right-panel { display: flex; flex-direction: column; gap: 16px; }
+
+    .panel-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+    }
+    .panel-title {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 13px; font-weight: 600;
+      color: var(--text2); text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-bottom: 14px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .panel-title .dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--accent);
+    }
+
+    /* ── Big prediction display ──────────────────── */
+    .prediction-display {
+      text-align: center; padding: 8px 0 16px;
+    }
+    .pred-sign {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 48px; font-weight: 700;
+      color: var(--accent);
+      letter-spacing: -1px;
+      min-height: 64px;
+      line-height: 1;
+    }
+    .pred-sign.dim { color: var(--text3); font-size: 28px; font-weight: 400; }
+    .pred-conf {
+      font-size: 13px; color: var(--text2); margin-top: 6px;
+    }
+    .conf-ring-wrap {
+      display: flex; justify-content: center; margin: 12px 0 4px;
+    }
+    .conf-ring {
+      width: 80px; height: 80px; position: relative;
+    }
+    .conf-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+    .conf-ring circle { fill: none; stroke-width: 6; stroke-linecap: round; }
+    .conf-ring .track { stroke: var(--border2); }
+    .conf-ring .fill  { stroke: var(--accent); stroke-dasharray: 220; stroke-dashoffset: 220; transition: stroke-dashoffset 0.5s ease; }
+    .conf-ring .pct {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; font-weight: 600; color: var(--text);
+      transform: none;
+    }
+
+    /* ── Probability bars ────────────────────────── */
+    .prob-list { display: flex; flex-direction: column; gap: 8px; }
+    .prob-row { display: flex; align-items: center; gap: 10px; }
+    .prob-label {
+      width: 80px; font-size: 12px; color: var(--text2);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      text-transform: capitalize; flex-shrink: 0;
+    }
+    .prob-track {
+      flex: 1; height: 6px;
+      background: var(--bg2); border-radius: 99px;
+      overflow: hidden;
+    }
+    .prob-fill {
+      height: 100%; border-radius: 99px;
+      background: var(--border2);
+      transition: width 0.4s ease, background 0.3s;
+    }
+    .prob-fill.top { background: var(--accent); }
+    .prob-pct {
+      width: 36px; font-size: 11px; color: var(--text3);
+      text-align: right; flex-shrink: 0;
+    }
+
+    /* ── History ─────────────────────────────────── */
+    .history-list {
+      display: flex; flex-wrap: wrap; gap: 6px;
+      min-height: 32px;
+    }
+    .history-chip {
+      padding: 4px 12px;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 99px;
+      font-size: 12px; font-weight: 500;
+      color: var(--text2);
+      cursor: pointer; transition: all 0.15s;
+      text-transform: capitalize;
+    }
+    .history-chip:hover { border-color: var(--accent); color: var(--accent); }
+    .history-chip.recent {
+      border-color: rgba(0,229,160,0.35);
+      color: var(--accent);
+      background: var(--accent-dim);
+    }
+
+    /* ── Settings ────────────────────────────────── */
+    .settings-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .settings-row:last-child { border-bottom: none; padding-bottom: 0; }
+    .setting-name {
+      font-size: 13px; color: var(--text);
+    }
+    .setting-desc {
+      font-size: 11px; color: var(--text3); margin-top: 2px;
+    }
+
+    /* Toggle switch */
+    .toggle {
+      position: relative; width: 40px; height: 22px;
+      flex-shrink: 0;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute; cursor: pointer;
+      inset: 0; background: var(--bg2);
+      border: 1px solid var(--border2);
+      border-radius: 99px; transition: 0.25s;
+    }
+    .toggle-slider::before {
+      content: ''; position: absolute;
+      height: 16px; width: 16px; left: 3px; bottom: 2px;
+      background: var(--text3);
+      border-radius: 50%; transition: 0.25s;
+    }
+    .toggle input:checked + .toggle-slider { background: var(--accent-dim); border-color: var(--accent); }
+    .toggle input:checked + .toggle-slider::before { transform: translateX(17px); background: var(--accent); }
+
+    /* Threshold slider */
+    .threshold-wrap { display: flex; align-items: center; gap: 10px; }
+    .threshold-wrap input[type=range] {
+      flex: 1; appearance: none; -webkit-appearance: none; height: 4px;
+      background: var(--border2); border-radius: 99px; cursor: pointer;
+    }
+    .threshold-wrap input[type=range]::-webkit-slider-thumb {
+      appearance: none; -webkit-appearance: none;
+      width: 16px; height: 16px;
+      background: var(--accent); border-radius: 50%;
+      cursor: pointer;
+    }
+    .threshold-val {
+      font-size: 12px; font-weight: 500; color: var(--accent);
+      min-width: 28px; text-align: right;
+    }
+
+    /* ── Toast ───────────────────────────────────── */
+    #toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
+      background: var(--card); border: 1px solid var(--border2);
+      border-radius: var(--radius-sm);
+      padding: 12px 20px; font-size: 13px; color: var(--text);
+      z-index: 999; transition: transform 0.3s ease;
+      pointer-events: none; white-space: nowrap;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+
+    /* ── Supported signs grid ────────────────────── */
+    .signs-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+      gap: 6px;
+    }
+    .sign-chip {
+      padding: 7px 4px;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      text-align: center;
+      font-size: 12px; font-weight: 500;
+      color: var(--text2);
+      text-transform: capitalize;
+      transition: 0.15s;
+    }
+    .sign-chip.active {
+      background: var(--accent-dim);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* ── Demo mode banner ────────────────────────── */
+    .demo-banner {
+      background: rgba(255,176,32,0.08);
+      border: 1px solid rgba(255,176,32,0.25);
+      border-radius: var(--radius-sm);
+      padding: 10px 14px;
+      font-size: 12px; color: var(--warn);
+      line-height: 1.5;
+      display: none;
+    }
+
+    /* Spinner */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid var(--border2);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+    }
+
+    /* Scan line animation on video */
+    @keyframes scanline {
+      0%   { top: -4px; opacity: 0.6; }
+      100% { top: 100%; opacity: 0; }
+    }
+    .scanline {
+      position: absolute; left: 0; right: 0; height: 2px;
+      background: linear-gradient(to right, transparent, var(--accent), transparent);
+      pointer-events: none; display: none;
+      animation: scanline 2.5s linear infinite;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────── -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">🤟</div>
+    <div class="logo-text">Sign<span>Speak</span></div>
+  </div>
+  <div style="display:flex; align-items:center; gap:12px;">
+    <div class="spinner" id="spinner"></div>
+    <div class="status-pill">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">Not started</span>
+    </div>
+  </div>
+</header>
+
+<!-- ── Main ────────────────────────────────────────────── -->
+<main>
+
+  <!-- Left: Camera + Sentence -->
+  <div class="camera-section">
+
+    <div class="camera-card">
+      <div class="camera-header">
+        <div class="camera-title">Live Camera Feed</div>
+        <div class="camera-controls">
+          <button class="btn" id="flipBtn" disabled>&#8646; Flip</button>
+          <button class="btn btn-primary" id="startBtn">&#9654; Start Camera</button>
+          <button class="btn btn-danger" id="stopBtn" disabled>&#9632; Stop</button>
+        </div>
+      </div>
+
+      <div class="video-wrapper" id="videoWrapper">
+        <div class="camera-placeholder" id="placeholder">
+          <div class="icon">📷</div>
+          <p>Click "Start Camera" to begin real-time sign language recognition</p>
+        </div>
+        <video id="videoEl" autoplay muted playsinline></video>
+        <img id="landmarkImg" alt="Annotated hand landmarks"/>
+        <div class="scanline" id="scanline"></div>
+
+        <!-- Corner decorations -->
+        <div class="corner corner-tl" id="corners" style="display:none"></div>
+        <div class="corner corner-tr"></div>
+        <div class="corner corner-bl"></div>
+        <div class="corner corner-br"></div>
+
+        <div class="sign-overlay" id="signOverlay"></div>
+
+        <div class="conf-bar-wrap" id="confBarWrap">
+          <div class="conf-label" id="confBarLabel">Confidence</div>
+          <div class="conf-bar-track">
+            <div class="conf-bar-fill" id="confBarFill"></div>
+          </div>
+        </div>
+
+        <div class="camera-badges" id="cameraBadges">
+          <div class="badge" id="fpsBadge">-- fps</div>
+          <div class="badge green" id="handBadge">No hand</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sentence builder -->
+    <div class="sentence-card">
+      <div class="sentence-label">Sentence builder</div>
+      <div class="sentence-output" id="sentenceOutput">
+        <span class="placeholder">Signs you make will appear here...</span>
+      </div>
+      <div class="sentence-actions">
+        <button class="btn btn-primary" id="addWordBtn" disabled>+ Add Word</button>
+        <button class="btn" id="speakBtn" disabled>🔊 Speak</button>
+        <button class="btn" id="copyBtn" disabled>Copy</button>
+        <button class="btn btn-danger" id="clearBtn" disabled>Clear</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Right panel -->
+  <div class="right-panel">
+
+    <!-- Demo mode warning -->
+    <div class="demo-banner" id="demoBanner">
+      ⚠ <strong>Demo mode</strong> — Backend model not trained yet. Showing simulated predictions. Run <code>train_model.py</code> to enable real recognition.
+    </div>
+
+    <!-- Prediction -->
+    <div class="panel-card">
+      <div class="panel-title"><div class="dot"></div>Current Prediction</div>
+      <div class="prediction-display">
+        <div class="pred-sign dim" id="predSign">—</div>
+        <div class="conf-ring-wrap">
+          <div class="conf-ring">
+            <svg viewBox="0 0 80 80">
+              <circle class="track" cx="40" cy="40" r="34"/>
+              <circle class="fill" id="confRingFill" cx="40" cy="40" r="34"/>
+            </svg>
+            <div class="pct" id="confPct">0%</div>
+          </div>
+        </div>
+        <div class="pred-conf" id="predConf">Waiting for gesture...</div>
+      </div>
+    </div>
+
+    <!-- Probabilities -->
+    <div class="panel-card">
+      <div class="panel-title"><div class="dot"></div>All Probabilities</div>
+      <div class="prob-list" id="probList">
+        <div style="font-size:12px; color:var(--text3);">Start camera to see live predictions</div>
+      </div>
+    </div>
+
+    <!-- History -->
+    <div class="panel-card">
+      <div class="panel-title"><div class="dot"></div>Recent Detections</div>
+      <div class="history-list" id="historyList">
+        <div style="font-size:12px; color:var(--text3);">No history yet</div>
+      </div>
+    </div>
+
+    <!-- Settings -->
+    <div class="panel-card">
+      <div class="panel-title"><div class="dot"></div>Settings</div>
+
+      <div class="settings-row">
+        <div>
+          <div class="setting-name">Auto-add to sentence</div>
+          <div class="setting-desc">Add detected sign automatically when held</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="autoAddToggle"/>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <div class="settings-row">
+        <div>
+          <div class="setting-name">Text to speech</div>
+          <div class="setting-desc">Speak predictions aloud via browser TTS</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="ttsToggle" checked/>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <div class="settings-row">
+        <div>
+          <div class="setting-name">Show landmarks overlay</div>
+          <div class="setting-desc">Display annotated hand from backend</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="overlayToggle" checked/>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <div class="settings-row">
+        <div>
+          <div class="setting-name">Confidence threshold</div>
+          <div class="setting-desc">Ignore predictions below this value</div>
+        </div>
+        <div class="threshold-wrap">
+          <input type="range" min="0" max="99" value="60" id="threshSlider"/>
+          <div class="threshold-val" id="threshVal">60%</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Supported signs -->
+    <div class="panel-card">
+      <div class="panel-title"><div class="dot"></div>Supported Signs</div>
+      <div class="signs-grid" id="signsGrid"></div>
+    </div>
+
+  </div>
+</main>
+
+<div id="toast"></div>
+
+<script>
+// ── Config ────────────────────────────────────────────────────────────────
+const API_BASE   = "http://localhost:5000/api";
+const FPS_TARGET = 8;   // frames per second to send to backend
+
+// ── State ─────────────────────────────────────────────────────────────────
+let stream       = null;
+let isRunning    = false;
+let isMirrored   = true;
+let sentence     = [];
+let history      = [];
+let lastSign     = null;
+let lastSignTime = 0;
+let autoHoldMs   = 2000;
+let threshold    = 0.60;
+let frameTimer   = null;
+let lastFpsTime  = performance.now();
+let frameCount   = 0;
+let classes      = [];
+let demoMode     = false;
+
+// ── DOM refs ──────────────────────────────────────────────────────────────
+const videoEl       = document.getElementById('videoEl');
+const landmarkImg   = document.getElementById('landmarkImg');
+const signOverlay   = document.getElementById('signOverlay');
+const confBarFill   = document.getElementById('confBarFill');
+const confBarLabel  = document.getElementById('confBarLabel');
+const confBarWrap   = document.getElementById('confBarWrap');
+const confRingFill  = document.getElementById('confRingFill');
+const confPct       = document.getElementById('confPct');
+const predSign      = document.getElementById('predSign');
+const predConf      = document.getElementById('predConf');
+const probList      = document.getElementById('probList');
+const historyList   = document.getElementById('historyList');
+const sentenceOut   = document.getElementById('sentenceOutput');
+const signsGrid     = document.getElementById('signsGrid');
+const statusDot     = document.getElementById('statusDot');
+const statusText    = document.getElementById('statusText');
+const demoBanner    = document.getElementById('demoBanner');
+const fpsBadge      = document.getElementById('fpsBadge');
+const handBadge     = document.getElementById('handBadge');
+const cameraBadges  = document.getElementById('cameraBadges');
+const scanline      = document.getElementById('scanline');
+const placeholder   = document.getElementById('placeholder');
+const corners       = document.querySelectorAll('.corner');
+
+// ── Init: fetch backend health ────────────────────────────────────────────
+async function init() {
+  try {
+    const r = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(3000) });
+    const d = await r.json();
+    demoMode = d.demo_mode;
+    classes  = d.classes.length ? d.classes : await fetchClasses();
+    if (demoMode) demoBanner.style.display = 'block';
+    setStatus('ready', 'Backend connected');
+    renderSignsGrid();
+  } catch (e) {
+    setStatus('error', 'Backend offline');
+    demoBanner.style.display = 'block';
+    demoBanner.textContent = '⚠ Backend not reachable. Run: python app.py';
+    classes = ["hello","thank_you","yes","no","help","please","sorry","good","bad","i_love_you"];
+    renderSignsGrid();
+  }
+}
+
+async function fetchClasses() {
+  try {
+    const r = await fetch(`${API_BASE}/classes`);
+    const d = await r.json();
+    return d.classes;
+  } catch { return []; }
+}
+
+// ── Camera ────────────────────────────────────────────────────────────────
+document.getElementById('startBtn').addEventListener('click', startCamera);
+document.getElementById('stopBtn').addEventListener('click',  stopCamera);
+document.getElementById('flipBtn').addEventListener('click',  flipCamera);
+
+async function startCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: 1280, height: 720, facingMode: 'user' }
+    });
+    videoEl.srcObject = stream;
+    videoEl.style.display = 'block';
+    placeholder.style.display = 'none';
+    scanline.style.display = 'block';
+    cameraBadges.style.display = 'flex';
+    confBarWrap.style.display = 'block';
+    corners.forEach(c => c.style.display = 'block');
+
+    document.getElementById('startBtn').disabled = true;
+    document.getElementById('stopBtn').disabled  = false;
+    document.getElementById('flipBtn').disabled  = false;
+    document.getElementById('addWordBtn').disabled = false;
+
+    isRunning = true;
+    setStatus('active', demoMode ? 'Demo mode — live' : 'Recognizing');
+    startInferenceLoop();
+  } catch (e) {
+    showToast('Camera access denied — check browser permissions');
+    setStatus('error', 'Camera error');
+  }
+}
+
+function stopCamera() {
+  isRunning = false;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  clearInterval(frameTimer);
+  videoEl.style.display  = 'none';
+  landmarkImg.style.display = 'none';
+  scanline.style.display = 'none';
+  cameraBadges.style.display = 'none';
+  confBarWrap.style.display  = 'none';
+  signOverlay.style.display  = 'none';
+  corners.forEach(c => c.style.display = 'none');
+  placeholder.style.display = 'flex';
+
+  document.getElementById('startBtn').disabled  = false;
+  document.getElementById('stopBtn').disabled   = true;
+  document.getElementById('flipBtn').disabled   = true;
+  document.getElementById('addWordBtn').disabled = true;
+
+  setStatus('', 'Stopped');
+  predSign.textContent = '—';
+  predSign.className   = 'pred-sign dim';
+}
+
+function flipCamera() {
+  isMirrored = !isMirrored;
+  videoEl.style.transform = isMirrored ? 'scaleX(-1)' : 'scaleX(1)';
+}
+
+// ── Inference loop ────────────────────────────────────────────────────────
+const canvas2d = document.createElement('canvas');
+const ctx2d    = canvas2d.getContext('2d');
+
+function startInferenceLoop() {
+  const interval = Math.round(1000 / FPS_TARGET);
+  frameTimer = setInterval(sendFrame, interval);
+}
+
+async function sendFrame() {
+  if (!isRunning || videoEl.readyState < 2) return;
+
+  canvas2d.width  = videoEl.videoWidth  || 640;
+  canvas2d.height = videoEl.videoHeight || 480;
+  if (isMirrored) {
+    ctx2d.save();
+    ctx2d.scale(-1, 1);
+    ctx2d.drawImage(videoEl, -canvas2d.width, 0);
+    ctx2d.restore();
+  } else {
+    ctx2d.drawImage(videoEl, 0, 0);
+  }
+  const b64 = canvas2d.toDataURL('image/jpeg', 0.75);
+
+  // FPS counter
+  frameCount++;
+  const now = performance.now();
+  if (now - lastFpsTime >= 1000) {
+    fpsBadge.textContent = `${frameCount} fps`;
+    frameCount  = 0;
+    lastFpsTime = now;
+  }
+
+  try {
+    const resp = await fetch(`${API_BASE}/predict`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ frame: b64 }),
+    });
+    const data = await resp.json();
+    handlePrediction(data);
+  } catch (e) {
+    handBadge.textContent = 'API error';
+    handBadge.className   = 'badge';
+  }
+}
+
+// ── Handle prediction result ──────────────────────────────────────────────
+function handlePrediction(data) {
+  if (!data.hand_detected) {
+    handBadge.textContent = 'No hand';
+    handBadge.className   = 'badge';
+    signOverlay.style.display = 'none';
+    setRing(0);
+    return;
+  }
+
+  handBadge.textContent = 'Hand detected';
+  handBadge.className   = 'badge green';
+
+  // Annotated frame overlay
+  if (document.getElementById('overlayToggle').checked && data.annotated_frame) {
+    landmarkImg.src           = data.annotated_frame;
+    landmarkImg.style.display = 'block';
+    videoEl.style.opacity     = '0';
+  } else {
+    landmarkImg.style.display = 'none';
+    videoEl.style.opacity     = '1';
+  }
+
+  const sign = data.sign;
+  const conf = data.confidence;
+
+  // Confidence UI
+  const pct = Math.round(conf * 100);
+  confBarFill.style.width = `${pct}%`;
+  confBarLabel.textContent = `Confidence: ${pct}%`;
+  setRing(conf);
+
+  if (conf < threshold) {
+    signOverlay.textContent      = `Low confidence (${pct}%)`;
+    signOverlay.style.display    = 'block';
+    signOverlay.style.color      = 'var(--text3)';
+    signOverlay.style.borderColor = 'var(--border2)';
+    predSign.textContent = sign;
+    predSign.className   = 'pred-sign dim';
+    predConf.textContent = `${pct}% — below threshold`;
+    return;
+  }
+
+  // Update overlay
+  signOverlay.textContent      = sign.replace(/_/g, ' ').toUpperCase();
+  signOverlay.style.display    = 'block';
+  signOverlay.style.color      = 'var(--accent)';
+  signOverlay.style.borderColor = 'var(--accent)';
+
+  // Update prediction panel
+  predSign.textContent = sign.replace(/_/g, ' ');
+  predSign.className   = 'pred-sign';
+  predConf.textContent = `${pct}% confidence`;
+
+  // Probabilities
+  if (data.all_probabilities) {
+    renderProbBars(data.all_probabilities, sign);
+  }
+
+  // Highlight signs grid
+  document.querySelectorAll('.sign-chip').forEach(el => {
+    el.classList.toggle('active', el.dataset.sign === sign);
+  });
+
+  // History
+  const now = Date.now();
+  if (sign !== lastSign || (now - lastSignTime) > 3000) {
+    addToHistory(sign);
+    if (document.getElementById('ttsToggle').checked && sign !== lastSign) {
+      speakText(sign.replace(/_/g, ' '));
+    }
+    lastSign     = sign;
+    lastSignTime = now;
+  }
+
+  // Auto-add to sentence
+  if (document.getElementById('autoAddToggle').checked) {
+    if (sign === lastSign && (now - lastSignTime) > autoHoldMs) {
+      addSignToSentence(sign);
+      lastSignTime = now + autoHoldMs;
+    }
+  }
+}
+
+// ── Confidence ring ───────────────────────────────────────────────────────
+function setRing(conf) {
+  const circumference = 2 * Math.PI * 34; // r=34
+  const offset = circumference - (conf * circumference);
+  confRingFill.style.strokeDashoffset = offset;
+  confPct.textContent = `${Math.round(conf * 100)}%`;
+}
+
+// ── Probability bars ──────────────────────────────────────────────────────
+function renderProbBars(probs, topSign) {
+  const sorted = Object.entries(probs)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8);
+
+  probList.innerHTML = sorted.map(([label, val]) => {
+    const pct = Math.round(val * 100);
+    const isTop = label === topSign;
+    return `<div class="prob-row">
+      <div class="prob-label">${label.replace(/_/g,' ')}</div>
+      <div class="prob-track">
+        <div class="prob-fill ${isTop ? 'top' : ''}" style="width:${pct}%"></div>
+      </div>
+      <div class="prob-pct">${pct}%</div>
+    </div>`;
+  }).join('');
+}
+
+// ── History ───────────────────────────────────────────────────────────────
+function addToHistory(sign) {
+  history.unshift(sign);
+  if (history.length > 12) history.pop();
+  historyList.innerHTML = history.map((s, i) => {
+    return `<div class="history-chip ${i === 0 ? 'recent' : ''}"
+      onclick="addSignToSentence('${s}')">${s.replace(/_/g,' ')}</div>`;
+  }).join('');
+}
+
+// ── Sentence builder ──────────────────────────────────────────────────────
+document.getElementById('addWordBtn').addEventListener('click', () => {
+  if (lastSign) addSignToSentence(lastSign);
+  else showToast('No sign detected yet');
+});
+
+document.getElementById('clearBtn').addEventListener('click', () => {
+  sentence = [];
+  renderSentence();
+});
+
+document.getElementById('copyBtn').addEventListener('click', () => {
+  const text = sentence.map(s => s.replace(/_/g,' ')).join(' ');
+  navigator.clipboard.writeText(text).then(() => showToast('Copied to clipboard!'));
+});
+
+document.getElementById('speakBtn').addEventListener('click', () => {
+  const text = sentence.map(s => s.replace(/_/g,' ')).join(' ');
+  if (text) speakText(text);
+  else showToast('Sentence is empty');
+});
+
+function addSignToSentence(sign) {
+  sentence.push(sign);
+  renderSentence();
+  document.getElementById('clearBtn').disabled  = false;
+  document.getElementById('speakBtn').disabled  = false;
+  document.getElementById('copyBtn').disabled   = false;
+  showToast(`Added: ${sign.replace(/_/g,' ')}`);
+}
+
+function renderSentence() {
+  if (sentence.length === 0) {
+    sentenceOut.innerHTML = '<span class="placeholder">Signs you make will appear here...</span>';
+    document.getElementById('clearBtn').disabled  = true;
+    document.getElementById('speakBtn').disabled  = true;
+    document.getElementById('copyBtn').disabled   = true;
+  } else {
+    sentenceOut.textContent = sentence.map(s => s.replace(/_/g,' ')).join(' ');
+  }
+}
+
+// ── TTS ───────────────────────────────────────────────────────────────────
+function speakText(text) {
+  if (!window.speechSynthesis) return;
+  speechSynthesis.cancel();
+  const utt = new SpeechSynthesisUtterance(text);
+  utt.rate = 0.9; utt.pitch = 1;
+  speechSynthesis.speak(utt);
+}
+
+// ── Signs grid ────────────────────────────────────────────────────────────
+function renderSignsGrid() {
+  signsGrid.innerHTML = classes.map(c =>
+    `<div class="sign-chip" data-sign="${c}">${c.replace(/_/g,' ')}</div>`
+  ).join('');
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────
+document.getElementById('threshSlider').addEventListener('input', function () {
+  threshold = this.value / 100;
+  document.getElementById('threshVal').textContent = `${this.value}%`;
+});
+
+// ── UI helpers ────────────────────────────────────────────────────────────
+function setStatus(type, text) {
+  statusText.textContent = text;
+  statusDot.className = 'status-dot' + (type === 'active' ? ' active' : type === 'error' ? ' error' : '');
+}
+
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ── Start ─────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
