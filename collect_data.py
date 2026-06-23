@@ -16,7 +16,7 @@ hands      = mp_hands.Hands(static_image_mode=False,
                              max_num_hands=1,
                              min_detection_confidence=0.7)
 
-CLASSES     = ["bad"]
+CLASSES = ["hello", "thank_you", "yes", "no", "help", "please", "sorry", "good", "bad", "i_love_you"]
 NUM_SAMPLES = 200
 DATA_DIR    = "data/landmarks"
 SEQUENCE_LEN = 30   # frames per dynamic gesture sample
